@@ -120,24 +120,62 @@ class TestSetGenerator:
         return test_cases
 
     def _parse_questions(self, raw: str, n_questions: int) -> List[str]:
-        """Extract a list of question strings from the LLM's JSON response."""
-        # Strip markdown code fences if present
+        """
+        Extract a list of question strings from the LLM's JSON response.
+
+        Tries three strategies in order:
+        1. Parse the entire response as a JSON array (clean response).
+        2. Find the first JSON array anywhere in the response using regex
+           (handles responses with surrounding prose).
+        3. Line-by-line fallback: extract lines that look like questions.
+        """
+        import re
+
+        # --- Strategy 1: whole response is a JSON array (possibly code-fenced) ---
         text = raw.strip()
         if text.startswith("```"):
-            lines = text.splitlines()
-            text = "\n".join(lines[1:-1] if lines[-1] == "```" else lines[1:])
+            inner = text.splitlines()
+            # Drop opening fence (and optional language tag) + closing fence
+            start = 1
+            end = len(inner) - 1 if inner[-1].strip() == "```" else len(inner)
+            text = "\n".join(inner[start:end])
 
         try:
             parsed = json.loads(text)
             if isinstance(parsed, list):
-                return [str(q).strip() for q in parsed if str(q).strip()][:n_questions]
-        except json.JSONDecodeError:
+                questions = [str(q).strip() for q in parsed if str(q).strip()]
+                if questions:
+                    return questions[:n_questions]
+        except (json.JSONDecodeError, ValueError):
             pass
 
-        # Fallback: extract quoted strings line by line
+        # --- Strategy 2: find first JSON array anywhere in the raw response ---
+        # Regex finds the first [...] block (non-greedy, handles multi-line)
+        match = re.search(r"\[.*?\]", raw, re.DOTALL)
+        if match:
+            try:
+                parsed = json.loads(match.group())
+                if isinstance(parsed, list):
+                    questions = [str(q).strip() for q in parsed if str(q).strip()]
+                    if questions:
+                        return questions[:n_questions]
+            except (json.JSONDecodeError, ValueError):
+                pass
+
+        # --- Strategy 3: line-by-line extraction ---
         questions = []
         for line in raw.splitlines():
-            line = line.strip().lstrip("0123456789.-) ").strip().strip('"').strip()
-            if line.endswith("?") and len(line) > 10:
+            line = line.strip()
+            # Strip leading numbering like "1.", "1)", "-", "*"
+            line = re.sub(r"^[\d]+[.)]\s*", "", line)
+            line = line.lstrip("-*• ").strip().strip('"').strip("'").strip()
+            if line.endswith("?") and len(line) > 15:
                 questions.append(line)
-        return questions[:n_questions]
+        if questions:
+            return questions[:n_questions]
+
+        logger.warning(
+            "Could not parse questions from LLM response. Raw response (first 300 chars): %s",
+            raw[:300],
+        )
+        return []

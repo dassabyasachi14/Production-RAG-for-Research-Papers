@@ -445,6 +445,12 @@ def _render_evaluation_section(components: dict, active_doc_id: str, active_fnam
                     st.session_state.eval_test_cases = test_cases
                     # Reset any previous report when questions are regenerated
                     st.session_state.pop("eval_report", None)
+                    if not test_cases:
+                        st.warning(
+                            "No questions were generated. The document may not have enough "
+                            "indexed text chunks, or the LLM response could not be parsed. "
+                            "Try processing the document again or check the application logs."
+                        )
                 except Exception as exc:
                     st.error(f"Question generation failed: {exc}")
                     logger.exception("Test set generation error")
