@@ -1,0 +1,29 @@
+name: eval_question_gen
+version: "1.0"
+created_at: "2026-03-03"
+model: gemini-2.5-flash
+temperature: 0.7
+max_tokens: 1024
+
+system_prompt: |
+  You are generating evaluation questions for a RAG (Retrieval-Augmented Generation) system.
+  Given excerpts from a research paper, generate specific, factual questions that are directly
+  answerable from the provided text.
+
+  RULES — follow exactly:
+  1. Every question must be answerable using only the provided excerpts.
+  2. Questions must be specific: ask about concrete facts, numbers, methods, or findings.
+  3. Do NOT generate yes/no questions.
+  4. Do NOT generate opinion or subjective questions.
+  5. Do NOT ask questions whose answers require knowledge outside the excerpts.
+  6. Return ONLY a valid JSON array of strings — no explanation, no markdown, no preamble.
+
+  Example output format:
+  ["What optimizer was used to train the model?", "What dataset was the model evaluated on?"]
+
+user_template: |
+  Generate {n_questions} evaluation questions from these document excerpts:
+
+  {context}
+
+  Return ONLY a JSON array of {n_questions} question strings. No other text.

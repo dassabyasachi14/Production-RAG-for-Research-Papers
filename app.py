@@ -410,6 +410,129 @@ def main():
             }
         )
 
+    _render_evaluation_section(components, active_doc_id, active_fname)
+
+
+def _render_evaluation_section(components: dict, active_doc_id: str, active_fname: str):
+    """Render the evaluation expander section below the chat interface."""
+    import pandas as pd
+
+    from src.evaluation.evaluator import Evaluator
+    from src.evaluation.metrics import run_evaluation
+    from src.evaluation.test_set_generator import TestSetGenerator
+
+    st.divider()
+    with st.expander("📊 Evaluate this document", expanded=False):
+        st.markdown(
+            "Automatically generate test questions from the document and score the "
+            "RAG pipeline on **Faithfulness**, **Answer Relevancy**, and **Context Precision** "
+            "using Gemini as an LLM judge."
+        )
+
+        n_q = st.slider(
+            "Number of test questions", min_value=3, max_value=15, value=5, key="eval_n_q"
+        )
+
+        if st.button("Generate test questions", key="eval_gen_btn"):
+            with st.spinner("Generating questions from document chunks…"):
+                try:
+                    gen = TestSetGenerator(
+                        llm_client=components["llm_client"],
+                        prompt_manager=components["prompt_manager"],
+                        vector_store=components["vector_store"],
+                    )
+                    test_cases = gen.generate(doc_id=active_doc_id, n_questions=n_q)
+                    st.session_state.eval_test_cases = test_cases
+                    # Reset any previous report when questions are regenerated
+                    st.session_state.pop("eval_report", None)
+                except Exception as exc:
+                    st.error(f"Question generation failed: {exc}")
+                    logger.exception("Test set generation error")
+
+        # Editable question list
+        if st.session_state.get("eval_test_cases"):
+            st.markdown("**Review and edit questions before running:**")
+            edited_questions = []
+            for i, tc in enumerate(st.session_state.eval_test_cases):
+                edited = st.text_input(
+                    f"Q{i + 1}", value=tc.question, key=f"eval_q_{i}"
+                )
+                edited_questions.append(edited)
+
+            if st.button("Run evaluation", key="eval_run_btn", type="primary"):
+                # Apply any edits the user made
+                for i, tc in enumerate(st.session_state.eval_test_cases):
+                    st.session_state.eval_test_cases[i] = tc.model_copy(
+                        update={"question": edited_questions[i]}
+                    )
+
+                progress = st.progress(0)
+                status = st.empty()
+                evaluator = Evaluator(
+                    llm_client=components["llm_client"],
+                    prompt_manager=components["prompt_manager"],
+                )
+
+                with st.spinner("Running pipeline and scoring answers…"):
+                    try:
+                        report = run_evaluation(
+                            test_cases=st.session_state.eval_test_cases,
+                            retriever=components["retriever"],
+                            reranker=components["reranker"],
+                            generator=components["generator"],
+                            evaluator=evaluator,
+                            doc_id=active_doc_id,
+                            filename=active_fname,
+                        )
+                        st.session_state.eval_report = report
+                        progress.progress(100)
+                        status.empty()
+                    except Exception as exc:
+                        st.error(f"Evaluation failed: {exc}")
+                        logger.exception("Evaluation run error")
+
+        # Display results
+        if st.session_state.get("eval_report"):
+            report = st.session_state.eval_report
+            st.markdown("### Results")
+
+            # Aggregate metric cards
+            col1, col2, col3, col4 = st.columns(4)
+            col1.metric(
+                "Faithfulness",
+                f"{report.mean_faithfulness:.2f}",
+                help="Fraction of answer claims supported by context (1.0 = no hallucination)",
+            )
+            col2.metric(
+                "Answer Relevancy",
+                f"{report.mean_answer_relevancy:.2f}",
+                help="How directly the answer addresses the question (1.0 = fully responsive)",
+            )
+            col3.metric(
+                "Context Precision",
+                f"{report.mean_context_precision:.2f}",
+                help="Fraction of retrieved chunks that are relevant (1.0 = perfect retrieval)",
+            )
+            col4.metric(
+                "Grounded",
+                f"{report.n_grounded}/{report.n_questions}",
+                help="Answers backed by the document vs. INSUFFICIENT_EVIDENCE declines",
+            )
+
+            st.markdown("### Per-question breakdown")
+            rows = []
+            for s in report.samples:
+                rows.append(
+                    {
+                        "Question": s.question,
+                        "Grounded": "✓" if s.is_grounded else "✗",
+                        "Faithfulness": f"{s.faithfulness:.2f}" if s.faithfulness is not None else "—",
+                        "Answer Relevancy": f"{s.answer_relevancy:.2f}" if s.answer_relevancy is not None else "—",
+                        "Context Precision": f"{s.context_precision:.2f}" if s.context_precision is not None else "—",
+                    }
+                )
+            st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
 
 if __name__ == "__main__":
     main()
