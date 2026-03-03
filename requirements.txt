@@ -1,0 +1,32 @@
+# LLM & AI (new Google Gen AI SDK — replaces deprecated google-generativeai)
+google-genai>=1.0.0
+
+# PDF Processing
+pymupdf4llm>=0.0.17
+pymupdf>=1.24.0
+pdfplumber>=0.11.0
+
+# Embeddings & Reranking (sentence-transformers kept for CrossEncoder reranker only)
+sentence-transformers>=3.0.0
+torch>=2.2.0
+
+# Vector Store (numpy+pickle — no external deps, Python 3.14 safe)
+# chromadb removed: incompatible with Python 3.14 (pydantic v1 issue)
+
+# BM25
+rank-bm25>=0.2.2
+
+# Chunking
+tiktoken>=0.7.0
+
+# Data & Config
+pydantic>=2.0.0
+pyyaml>=6.0.1
+python-dotenv>=1.0.0
+
+# UI
+streamlit>=1.38.0
+
+# Utilities
+numpy>=1.26.0
+pillow>=10.0.0
