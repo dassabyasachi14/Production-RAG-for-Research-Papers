@@ -54,7 +54,7 @@ class BM25Store:
 
         path = self._index_path(doc_id)
         with open(path, "wb") as f:
-            pickle.dump({"index": index, "chunks": chunks}, f)
+            pickle.dump({"index": index, "chunks": [c.model_dump() for c in chunks]}, f)
 
         logger.info(
             "Built and saved BM25 index for doc_id=%s (%d chunks).", doc_id, len(chunks)
@@ -75,9 +75,19 @@ class BM25Store:
             logger.warning("No BM25 index file for doc_id=%s.", doc_id)
             return False
 
-        with open(path, "rb") as f:
-            data = pickle.load(f)
-        self._indexes[doc_id] = (data["index"], data["chunks"])
+        try:
+            with open(path, "rb") as f:
+                data = pickle.load(f)
+            raw = data["chunks"]
+            # Support old format (DocumentChunk instances) and new format (dicts)
+            chunks = [DocumentChunk.model_validate(c) if isinstance(c, dict) else c for c in raw]
+            self._indexes[doc_id] = (data["index"], chunks)
+        except Exception as exc:
+            logger.warning(
+                "Could not load BM25 index for doc_id=%s (%s). Re-indexing required.",
+                doc_id, exc,
+            )
+            return False
         logger.info("Loaded BM25 index for doc_id=%s.", doc_id)
         return True
 

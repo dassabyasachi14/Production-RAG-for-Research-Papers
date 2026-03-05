@@ -143,12 +143,30 @@ class VectorStore:
     def _save(self) -> None:
         with open(self._store_path, "wb") as f:
             pickle.dump(
-                {"vectors": self._vectors, "chunks": self._chunks}, f
+                {
+                    "vectors": self._vectors,
+                    "chunks": {k: v.model_dump() for k, v in self._chunks.items()},
+                },
+                f,
             )
 
     def _load(self) -> None:
-        if os.path.exists(self._store_path):
+        if not os.path.exists(self._store_path):
+            return
+        try:
             with open(self._store_path, "rb") as f:
                 data = pickle.load(f)
             self._vectors = data.get("vectors", {})
-            self._chunks = data.get("chunks", {})
+            raw = data.get("chunks", {})
+            # Support old format (DocumentChunk instances) and new format (dicts)
+            self._chunks = {
+                k: DocumentChunk.model_validate(v) if isinstance(v, dict) else v
+                for k, v in raw.items()
+            }
+        except Exception as exc:
+            logger.warning(
+                "Could not load vector store from %s (%s). Starting with empty store.",
+                self._store_path, exc,
+            )
+            self._vectors = {}
+            self._chunks = {}

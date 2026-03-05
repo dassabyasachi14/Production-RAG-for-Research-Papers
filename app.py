@@ -57,7 +57,7 @@ st.set_page_config(
 
 @st.cache_resource(show_spinner="Loading AI models (first run may take a few minutes)…")
 def _load_components():
-    """Initialise all heavy components once and cache them."""
+    """Initialise all heavy components once and cache them. v2"""
     from src.generation.answer_generator import AnswerGenerator
     from src.generation.llm_client import LLMClient
     from src.generation.prompt_manager import PromptManager
